@@ -5,3 +5,5 @@ image/
 t10k-*
 train-*
 *.csv
+*.svm
+*.model

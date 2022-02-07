@@ -210,3 +210,120 @@ num_of_pixel_size=784
    上記から先頭の千件だけを抽出したもの
 
 画像データの各ピクセルは、左上(0,0)から右下(27,27)へと 28x28 個順にカンマ区切りで並んだものとなってます。
+
+### node-svm をインストール
+一行が一画像となっているCSVファイルができたので、SVMに画像を学習させるにあたって、Node.jsの「node-svm」モジュールをインストールします。
+
+node-svm モジュールは、C++で書かれたSVMの実装「libsvm」をNode.jsのモジュールにしたものです。
+以下のコマンドを実行して、インストールします。
+
+```bash
+npm i -g svm
+```
+
+### 学習用データファイルを作る
+SVMに学習させるために、SVM用の学習ファイルを作成する必要があります。
+このSVMファイルは、CSVファイルを元に作成するのですが、SVMファイルがどのようなフォーマットであるのか紹介します。
+一行がデータとなっています。
+
+**書式 SCVファイル**
+```csv
+<label> <index1>:<value1> <index2>:<value2> <index3>:<value3> ...
+<label> <index1>:<value1> <index2>:<value2> <index3>:<value3> ...
+<label> <index1>:<value1> <index2>:<value2> <index3>:<value3> ...
+...
+```
+
+この様に、学習データであるSVMファイルの仕組みは、一行に一つのがぞうデータを与える点など、CSVファイルとそう大して変わりません。
+ちなみに「index:value」の内、value が 0 になるものについては、省略して記述してもよいことになってます。
+そのため、画像データのピクセルが0の物については省略して記述することができます。
+
+それでは、CSVファイルから、学習用SVMファイルを生成するプログラム`csv2trainfile.js`を作っていきます。
+
+```javascript
+var fs = require('fs');
+
+// 二種類のデータを処理
+csv2svm('train-mini.csv');
+csv2svm('train.csv');
+csv2svm('t10k-mini.csv');
+csv2svm('t10k.csv');
+console.log("ok");
+
+// CSVファイルからSVMファイルを作成
+function csv2svm(file_csv) {
+	// ファイル名を決定
+	var file_svm = file_csv.replace(/\.csv$/, "") + ".svm";
+	console.log("[I N] " + file_csv);
+	console.log("[OUT] " + file_svm);
+	console.log(file_svm);
+
+	// 保存用ファイルを開く
+	var f_svm = fs.openSync(file_svm, "w");
+
+	// 読込
+	var csv = fs.readFileSync(file_csv, "utf-8");
+	var lines = csv.split("\n");
+
+	// データを作成
+	for (var i in lines) {
+		// 経過報告
+		if (i % 1000 == 0) console.log(i + "/" + lines.length);
+
+		// 一行を処理
+		var line = lines[i];
+		var cells = line.split(",");
+		var no = cells.shift();
+		var vals = [];
+		for (var j = 0; j < cells.length; j++) {
+			var index = j + 1;
+			var v = cells[j];
+			if (v == 0) continue; // 0のデータは省略できる
+			var value = v / 255;     // データをスケーリング
+			vals.push(index + ":" + value);
+		}
+		if (vals.length == 0) continue;
+		var v_str = no + " " + vals.join(" ");
+		var dat = v_str + "\n";
+		// 書込 
+		fs.writeSync(f_svm, dat, null, "utf-8");
+	}
+	console.log("saved = " + file_svm);
+}
+```
+
+プログラムを実行するには、以下のコマンドを入力します。
+```bash
+node csv2trainfile.js
+```
+```bash
+[I N] train-mini.csv
+[OUT] train-mini.svm
+train-mini.svm
+0/1001
+1000/1001
+saved = train-mini.svm
+...省略...
+```
+プログラムを実行すると、4つの学習用データ 拡張子が`.svm` ファイルが生成されます。
+
+### SVM ファイルを学習させモデルを生成する
+学習データのSVMファイルが出来たら、モデルを作成しましょう。
+「node-svm」を利用して、プログラムを書いて学習させることも、もちろん出来ます。
+しかし「node-svm」インストールしているのであれば、コマンドラインから「node-svm」を以下の様にして利用することが出来ます。
+```bash
+node-svm train (入力svmファイル) (出力modelファイル)
+```
+では、実際に使ってみましょう。
+
+以下は、「train-mini.svm」と言う学習データから、学習モデル「train-mini.model」を生成するコマンドです。
+
+```bash
+node-svm train train-mini.svm train-mini.model
+```
+
+すると、どんなパラメータでデータを学習するのか、いくつか質問があります。
+ここでは、すべてデフォルトで学習させてみます。
+質問を読まずに全部「Enter」を押すとデフォルト設定となります。
+暫く待っていると、「train-mini.model」と言うモデルデータが生成させます。
+マシンの性能によっては時間がかかる事もあります。
